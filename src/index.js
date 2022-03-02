@@ -1,96 +1,210 @@
 const axios = require('axios')
 const fs = require("fs");
-const {Blob} = require('node:buffer');
+const rimraf = require("rimraf");
+let unzipper = require("unzipper")
+var spawn = require('child_process').spawn;
 
 
-const tar = require('tar');
+class SolutionManager {
 
-const env = {
-    main_path: process.env.MAIN_LOCATION || "C:\\Users\\Pierre\\Desktop\\bateau_test\\",
-    url: process.env.URL || "http://localhost:25565",
-    installer_name: process.env.INSTALLER_NAME || "resource_manager-win",
-    installer_version: process.env.INSTALLER_VERSION || "latest",
-}
-
-axios.defaults.baseURL = env.url
-
-const installers_url = "/resources/hosts/localhost/types/installers/resources/"
-const storage_dir = env.main_path + "storage\\install_manager\\"
-if (!fs.existsSync(storage_dir)){
-    fs.mkdirSync(storage_dir);
-}
-
-async function get_installer(installer_name, version) {
-    var url = installers_url + installer_name + "/releases/" + version;
-    var response = await axios.get(url)
-    return response.data;
-}
-
-async function download_installer(installer_name, version) {
-    var url = installers_url + installer_name + "/releases/" + version + "/download";
-    var response = await axios.get(url,{responseType: "blob"})
-    var blob = new Blob([response.data])
-    var installer_dir = storage_dir + installer_name + "\\";
-    if (!fs.existsSync(installer_dir)){
-        fs.mkdirSync(installer_dir);
-    }
-    var zip_file = installer_dir + installer_name + ".tar"
-    console.log("INSTALL ZIP")
-    await fs.writeFileSync(zip_file, await blob.text())
-    //await response.data.pipe(await fs.createWriteStream(zip_file))
-    console.log("UNZIP", zip_file)
-    console.log("TO   ", installer_dir)
-
-    if (fs.existsSync(zip_file)) {
-        await fs.createReadStream(zip_file).pipe(
-            tar.x({
-                C: installer_dir
-            })
-        )
-        console.log("UNZIP ok", zip_file)
-    } else {
-        console.log("UNZIP failed", zip_file)
+    constructor() {
+        this.config = this.read_config();
+        this.init();
     }
 
-}
 
-async function save_version(installer_name, installer) {
-    var installer_dir = storage_dir + installer_name + "/";
-    fs.writeFileSync(installer_dir + "version.json", JSON.stringify({version: installer.version}))
-}
-
-async function need_update(installer_name, installer) {
-    var installer_dir = storage_dir + installer_name + "/";;
-    var version_file = installer_dir + "version.json";
-    if (fs.existsSync(installer_dir) && fs.existsSync(version_file)){
-        const file = fs.readFileSync(version_file);
-        let version = JSON.parse(file.toString())
-        return Number.parseInt(version.version) < Number.parseInt(installer.version);
-
-    } else {
-        return true;
+    read_config() {
+        const file = fs.readFileSync("config.json");
+        let config = JSON.parse(file.toString());
+        return config;
     }
-}
 
-async function install(installer_name) {
+    init() {
 
-}
-
-async function get_update(installer_name, version) {
-    let installer = await get_installer(installer_name, version);
-    if (installer) {
-        if (await need_update(installer_name, installer)) {
-            console.log("Update", installer_name, "to version", installer.version)
-
-            if (fs.existsSync(storage_dir + installer_name)){
-                fs.rmdirSync(storage_dir + installer_name, {recursive: true})
-            }
-            await download_installer(installer_name, version)
-            await save_version(installer_name, installer)
-
+        this.main_path = this.config.MAIN_PATH || '.';
+        if (!fs.existsSync(this.main_path)) {
+            fs.mkdirSync(this.main_path, {recursive: true});
+        }
+        const bin_dir = this.main_path + '/binaries';
+        if (!fs.existsSync(bin_dir)) {
+            fs.mkdirSync(bin_dir);
+        }
+        const app_dir = this.main_path + '/apps';
+        if (!fs.existsSync(app_dir)) {
+            fs.mkdirSync(app_dir);
+        }
+        this.storage_dir = this.main_path + '/storage';
+        if (!fs.existsSync(this.storage_dir)) {
+            fs.mkdirSync(this.storage_dir);
         }
     }
+
+    async setup(host_name, type_name, resource_name, release_name) {
+        let resource = await this.get_resource_infos(host_name, type_name, resource_name, release_name)
+        await this.download_resource(host_name, type_name, resource_name, resource.version)
+        await this.install_app(host_name, type_name, resource_name, resource.version)
+
+    }
+
+    async install() {
+        await this.setup('localhost', 'apps', 'mongodb-linux', 'latest');
+        await this.setup('localhost', 'apps', 'resource_manager-linux', 'latest');
+        await this.setup('localhost', 'apps', 'solution_manager-linux', 'latest');
+
+
+    }
+
+    async download_file(url, dest) {
+        console.log("Download file:", url)
+        const writer = fs.createWriteStream(dest);
+        return axios.get(url, {responseType: 'stream'}).then(response => {
+            return new Promise((resolve, reject) => {
+                response.data.pipe(writer);
+                let error = null;
+                writer.on('error', err => {
+                    error = err;
+                    writer.close();
+                    reject(err);
+                });
+                writer.on('close', () => {
+                    if (!error) {
+                        console.log("Téléchargement terminé")
+                        resolve(true);
+                    }
+                });
+            })
+        })
+    }
+
+    async unzip(src, dest) {
+        return new Promise((resolve, reject) => {
+            console.log("Décompréssion de:", src)
+            console.log("Vers:", dest)
+            fs.createReadStream(src)
+                .pipe(unzipper.Parse())
+                .on('entry', function (entry) {
+                    entry.pipe(fs.createWriteStream(dest + "/" + entry.path));
+                    try {
+                        fs.chmodSync(dest + "/" + entry.path, 0o755);
+                    } catch (e) {
+
+                    }
+                })
+                .on('finish', () => {resolve()}).on('error', () => {reject()});
+
+        });
+
+    }
+
+    async run_mongo_db() {
+        const mongodb_app_path = this.main_path + "/apps/mongodb_latest"
+        const mongodb_storage_path = this.main_path + "/storage/mongodb";
+        console.log(mongodb_app_path)
+        let mongo_process = spawn("./run.sh", {
+            cwd: mongodb_app_path,
+            env: {
+                PORT: 27018,
+                STORAGE_PATH: mongodb_storage_path
+            }
+        });
+        mongo_process.stdout.on('data', function (data) {
+            console.log('stdout: ' + data.toString());
+        });
+
+        mongo_process.stderr.on('data', function (data) {
+            console.log('stderr: ' + data.toString());
+        });
+
+        mongo_process.on('exit', function (code) {
+            console.log('child process exited with code ' + code.toString());
+        });
+        await new Promise(r => setTimeout(r, 20000));
+        mongo_process.kill()
+    }
+
+    async run_resource_manager() {
+        const resource_manager_app_path = this.main_path + "/apps/resource_manager_latest"
+        const resource_manager_storage_path = this.main_path + "/storage/resource_manager";
+        console.log(resource_manager_app_path)
+        let resource_manager_process = spawn("./run.sh", {
+            cwd: resource_manager_app_path,
+            env: {
+                PORT: 25566,
+                MONGO_URL: "mongodb://localhost:27018/official",
+                RESOURCES_PATH: resource_manager_storage_path
+            }
+        });
+        resource_manager_process.stdout.on('data', function (data) {
+            console.log('stdout: ' + data.toString());
+        });
+
+        resource_manager_process.stderr.on('data', function (data) {
+            console.log('stderr: ' + data.toString());
+        });
+
+        resource_manager_process.on('exit', function (code) {
+            console.log('child process exited with code ' + code.toString());
+        });
+        await new Promise(r => setTimeout(r, 20000));
+        resource_manager_process.kill()
+    }
+
+    async get_resource_infos(host_name, type_name, resource_name, release_name) {
+        const url = this.config.OFFICIAL_URL || "http://localhost:25565";
+
+        const resource_manager_url = url + "/resources/hosts/" + host_name + "/types/" + type_name + "/resources/" + resource_name + "/releases/" + release_name
+        var {data: resource_manager} = await axios.get(resource_manager_url)
+        return resource_manager;
+    }
+
+    async download_resource(host_name, type_name, resource_name, release_name) {
+        const url = this.config.OFFICIAL_URL || "http://localhost:25565";
+
+        const resource_manager_url = url + "/resources/hosts/" + host_name + "/types/" + type_name + "/resources/" + resource_name + "/releases/" + release_name
+        const resource_manager_path = this.storage_dir + "/resource_manager/" + host_name + "/" + type_name + "/" + resource_name
+
+        const resource_manager_tar_path = resource_manager_path + "/" + resource_name + "_" + release_name + ".zip"
+        if (!fs.existsSync(resource_manager_path)) {
+            fs.mkdirSync(resource_manager_path, {recursive: true});
+        }
+        await this.download_file(resource_manager_url + "/download", resource_manager_tar_path);
+
+    }
+
+    async install_app(host_name, type_name, resource_name, release_name) {
+        const resource_manager_path = this.storage_dir + "/resource_manager/" + host_name + "/" + type_name + "/" + resource_name
+        const resource_manager_tar_path = resource_manager_path + "/" + resource_name + "_" + release_name + ".zip"
+        const resource_manager_app_path = this.main_path + "/apps/" + resource_name + "_" + release_name
+
+        if (fs.existsSync(resource_manager_app_path)) {
+            rimraf(resource_manager_app_path)
+            fs.mkdirSync(resource_manager_app_path, {recursive: true});
+        }
+
+        await this.unzip(resource_manager_tar_path, resource_manager_app_path);
+
+
+        return new Promise((resolve, reject) => {
+            let mongo_install_process = spawn("./install.sh", {
+                cwd: resource_manager_app_path
+            });
+            mongo_install_process.stdout.on('data', function (data) {
+                console.log('stdout: ' + data.toString());
+            });
+
+            mongo_install_process.stderr.on('data', function (data) {
+                console.log('stderr: ' + data.toString());
+            });
+
+            mongo_install_process.on('exit', async function (code) {
+                console.log(resource_name, 'install exited with code ' + code.toString());
+                resolve();
+            });
+        });
+
+
+    }
 }
 
-get_update(env.installer_name, env.installer_version)
+new SolutionManager().install()
 

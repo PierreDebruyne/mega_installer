@@ -1,5 +1,5 @@
 {
-  "name": "solution_manager",
+  "name": "mega_installer",
   "version": "1.0.0",
   "description": "",
   "main": "src/index.js",
@@ -15,7 +15,8 @@
   "license": "ISC",
   "dependencies": {
     "axios": "^0.26.0",
-    "tar": "^6.1.11"
+    "rimraf": "^3.0.2",
+    "unzipper": "^0.10.11"
   },
   "devDependencies": {
     "babel-cli": "^6.26.0",
@@ -35,5 +36,4 @@
     ],
     "outputPath": "binaries/"
   }
-
 }

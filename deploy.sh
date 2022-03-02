@@ -1,13 +1,13 @@
-npm run build-binaries
+#npm run build-binaries
 
 export URL="http://localhost:25565"
 
 export HOST="localhost"
-export TYPE="binaries"
-export RESOURCE="solution_manager-win"
+export TYPE="installers"
+export RESOURCE="mega_installer-linux"
 
-export FILE_PATH="binaries\solution_manager-win.exe"
+export FILE_PATH="binaries/mega_installer-linux"
 
-node "C:\Users\Pierre\Desktop\bateau\repos\resource_uploader\src\index.js"
+node "/home/pierre/Documents/Mega/repos/resource_uploader/src/index.js"
 
 read -p "Press [Enter] key to exit..."
