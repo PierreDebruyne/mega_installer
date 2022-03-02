@@ -39,17 +39,16 @@ class SolutionManager {
         }
     }
 
-    async setup(host_name, type_name, resource_name, release_name) {
-        let resource = await this.get_resource_infos(host_name, type_name, resource_name, release_name)
-        await this.download_resource(host_name, type_name, resource_name, resource.version)
-        await this.install_app(host_name, type_name, resource_name, resource.version)
-
-    }
-
     async install() {
         await this.setup('localhost', 'apps', 'mongodb-linux', 'latest');
         await this.setup('localhost', 'apps', 'resource_manager-linux', 'latest');
         await this.setup('localhost', 'apps', 'solution_manager-linux', 'latest');
+    }
+
+    async setup(host_name, type_name, resource_name, release_name) {
+        let resource = await this.get_resource_infos(host_name, type_name, resource_name, release_name)
+        await this.download_resource(host_name, type_name, resource_name, resource.version)
+        await this.install_app(host_name, type_name, resource_name, resource.version)
 
 
     }
@@ -84,11 +83,7 @@ class SolutionManager {
                 .pipe(unzipper.Parse())
                 .on('entry', function (entry) {
                     entry.pipe(fs.createWriteStream(dest + "/" + entry.path));
-                    try {
-                        fs.chmodSync(dest + "/" + entry.path, 0o755);
-                    } catch (e) {
 
-                    }
                 })
                 .on('finish', () => {resolve()}).on('error', () => {reject()});
 
@@ -177,14 +172,25 @@ class SolutionManager {
         const resource_manager_app_path = this.main_path + "/apps/" + resource_name + "_" + release_name
 
         if (fs.existsSync(resource_manager_app_path)) {
-            rimraf(resource_manager_app_path)
-            fs.mkdirSync(resource_manager_app_path, {recursive: true});
+            await new Promise((resolve, reject) => {
+                rimraf(resource_manager_app_path, () => {
+                    resolve();
+                })
+            })
+
         }
+        fs.mkdirSync(resource_manager_app_path, {recursive: true});
 
         await this.unzip(resource_manager_tar_path, resource_manager_app_path);
 
+        const storage_path = this.main_path + "/storage/" + resource_name;
+        if (!fs.existsSync(storage_path)) {
+            fs.mkdirSync(storage_path, {recursive: true});
+        }
 
-        return new Promise((resolve, reject) => {
+        console.log("INSTALLING")
+        fs.chmodSync(resource_manager_app_path + "/install.sh" , 0o755);
+          return new Promise((resolve, reject) => {
             let mongo_install_process = spawn("./install.sh", {
                 cwd: resource_manager_app_path
             });
