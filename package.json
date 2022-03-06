@@ -8,7 +8,8 @@
     "start-dev": "babel-node src/index.js",
     "build": "babel src -d dist",
     "start-builded": "babel-node dist/index.js",
-    "build-binaries": "npm run build && pkg ."
+    "build-binaries": "npm run build && pkg .",
+    "deploy": "sh deploy.sh"
   },
   "keywords": [],
   "author": "",
