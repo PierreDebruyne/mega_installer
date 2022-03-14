@@ -1,6 +1,6 @@
 #npm run build-binaries
 
-export URL="http://localhost:25565"
+export URL="http://localhost:30002"
 
 export HOST="localhost"
 export TYPE="installers"

@@ -42,7 +42,7 @@ class SolutionManager {
     }
 
     async get_resource_infos(host_name, type_name, resource_name, release_name) {
-        const url = this.config.OFFICIAL_URL || "http://localhost:25565";
+        const url = this.config.OFFICIAL_URL || "http://localhost:30002";
         const resource_manager_url = url + "/resources/hosts/" + host_name + "/types/" + type_name + "/resources/" + resource_name + "/releases/" + release_name
         try {
             var {data: resource_manager} = await axios.get(resource_manager_url)
@@ -55,7 +55,7 @@ class SolutionManager {
     }
 
     async download_resource(host_name, type_name, resource_name, release_name) {
-        const url = this.config.OFFICIAL_URL || "http://localhost:25565";
+        const url = this.config.OFFICIAL_URL || "http://localhost:30002";
 
         const resource_manager_url = url + "/resources/hosts/" + host_name + "/types/" + type_name + "/resources/" + resource_name + "/releases/" + release_name
         const resource_manager_path = this.storage_dir + "/resource_manager-" + PLATFORM + "/" + host_name + "/" + type_name + "/" + resource_name
@@ -132,7 +132,7 @@ async function run() {
 
     let main_path = process.argv[2] || process.cwd()
 
-    let solution_manager = new SolutionManager(main_path, {"OFFICIAL_URL": "http://localhost:25565"})
+    let solution_manager = new SolutionManager(main_path, {"OFFICIAL_URL": "http://localhost:30002"})
 
     await solution_manager.setup('localhost', 'apps', 'mongodb-linux', 'latest');
     await solution_manager.setup('localhost', 'apps', 'resource_manager-linux', 'latest');
