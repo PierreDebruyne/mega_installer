@@ -42,8 +42,9 @@ class SolutionManager {
     }
 
     async get_resource_infos(host_name, type_name, resource_name, release_name) {
-        const url = this.config.OFFICIAL_URL || "http://localhost:30002";
-        const resource_manager_url = url + "/resources/hosts/" + host_name + "/types/" + type_name + "/resources/" + resource_name + "/releases/" + release_name
+        const url = this.config.OFFICIAL_URL || "localhost:30002";
+        console.log(url)
+        const resource_manager_url = "http://" + url + "/resources/hosts/" + host_name + "/types/" + type_name + "/resources/" + resource_name + "/releases/" + release_name
         try {
             var {data: resource_manager} = await axios.get(resource_manager_url)
             return resource_manager;
@@ -55,9 +56,9 @@ class SolutionManager {
     }
 
     async download_resource(host_name, type_name, resource_name, release_name) {
-        const url = this.config.OFFICIAL_URL || "http://localhost:30002";
+        const url = this.config.OFFICIAL_URL || "localhost:30002";
 
-        const resource_manager_url = url + "/resources/hosts/" + host_name + "/types/" + type_name + "/resources/" + resource_name + "/releases/" + release_name
+        const resource_manager_url = "http://" + url + "/resources/hosts/" + host_name + "/types/" + type_name + "/resources/" + resource_name + "/releases/" + release_name
         const resource_manager_path = this.storage_dir + "/resource_manager-" + PLATFORM + "/" + host_name + "/" + type_name + "/" + resource_name
 
         const resource_manager_tar_path = resource_manager_path + "/" + resource_name + "_" + release_name + ".zip"
@@ -130,15 +131,23 @@ async function run() {
         return config;
     }
 
-    let main_path = process.argv[2] || process.cwd()
+    let main_path = process.argv[2] || process.cwd();
+    let parent_url = process.env.PARENT_URL || 'localhost';
+    let parent_port_start = process.env.PARENT_PORT_START || '30000';
 
-    let solution_manager = new SolutionManager(main_path, {"OFFICIAL_URL": "http://localhost:30002"})
+    let solution_manager = new SolutionManager(main_path, {"OFFICIAL_URL": parent_url + ':' + (Number.parseInt(parent_port_start) + 2).toString()})
 
     await solution_manager.setup('localhost', 'apps', 'mongodb-linux', 'latest');
     await solution_manager.setup('localhost', 'apps', 'resource_manager-linux', 'latest');
     await solution_manager.setup('localhost', 'apps', 'solution_manager-linux', 'latest');
     fs.symlinkSync("apps/solution_manager-linux_latest/solution_manager-linux", main_path + "/Mega")
     fs.chmodSync(main_path + "/Mega", 0o755);
+    fs.writeFileSync(main_path + '/config.json', JSON.stringify({
+            "PORT_START": "25000",
+            "DEBUG": false,
+            "PARENT_URL": parent_url,
+            "PARENT_PORT_START": parent_port_start
+        }))
     //let solution_zip_path = await solution_manager.download_resource('localhost', 'solutions', 'official_solution', "latest")
 
     //await unzip(solution_zip_path, main_path);
@@ -150,6 +159,6 @@ run()
     .then(() => {
         console.log("Success!")
     }).catch((e) => {
-        throw e
+    throw e
     console.log(e.message)
 })
